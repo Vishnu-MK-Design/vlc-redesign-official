@@ -16,325 +16,173 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+// Player layout based on Juxtopposed's VLC concept (CC BY 4.0).
+// Playback actions and track controls use VideoLAN's native Qt/QML components.
 import QtQuick
 import QtQuick.Templates as T
 import QtQuick.Layouts
-import QtQml.Models
-
-
 import VLC.MainInterface
 import VLC.Style
 import VLC.Widgets as Widgets
 import VLC.Player
+import VLC.PlayerControls as Controls
+import VLC.Playlist
+import VLC.Dialogs
 import VLC.Util
 
 T.Pane {
     id: root
-
-    enum TimeTextPosition {
-        Hide,
-        AboveSlider,
-        LeftRightSlider
-    }
-
-    implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
-                            implicitContentWidth + leftPadding + rightPadding)
-    implicitHeight: Math.max(implicitBackgroundHeight + bottomInset,
-                             implicitContentHeight + topPadding + bottomPadding)
-
-    topInset: sliderY
-
-    bottomPadding: VLCStyle.margin_xsmall
-
-    readonly property real sliderY: mapFromItem(contentItem, 0, contentItem.sliderY).y
-    property int textPosition: ControlBar.TimeTextPosition.AboveSlider
+    enum TimeTextPosition { Hide, AboveSlider, LeftRightSlider }
+    property int textPosition: ControlBar.TimeTextPosition.LeftRightSlider
     property int identifier: -1
-    property real sliderHeight: VLCStyle.heightBar_xxsmall
+    property real sliderHeight: VLCStyle.dp(8, VLCStyle.scale)
     property real bookmarksHeight: VLCStyle.controlBarBookmarksHeight
     property bool showRemainingTime: true
-
-    property var menu: undefined
-
+    property var menu: null
+    readonly property real sliderY: mapFromItem(positionSlider, 0, 0).y
+    readonly property bool compact: width < VLCStyle.dp(760, VLCStyle.scale)
+    readonly property ColorContext colorContext: ColorContext {
+        palette: VLCStyle.darkPalette
+        colorSet: ColorContext.Window
+    }
     signal requestLockUnlockAutoHide(bool lock)
-
-    ///incomming signal to request all menu and popup to close
     signal forceUnlock()
-
+    implicitHeight: VLCStyle.dp(52, VLCStyle.scale) + topPadding + bottomPadding
+    implicitWidth: VLCStyle.dp(640, VLCStyle.scale)
+    padding: VLCStyle.dp(8, VLCStyle.scale)
     enabled: visible
-
+    Accessible.role: Accessible.ToolBar
+    Accessible.name: qsTr("Player controls")
+    AccessibleCompat.id: "playerControlBar"
     Keys.priority: Keys.AfterItem
     Keys.onPressed: (event) => root.Navigation.defaultKeyAction(event)
     Navigation.cancelAction: function() { History.previous(Qt.BacktabFocusReason) }
 
-    Accessible.name: qsTr("Player controls")
-    AccessibleCompat.id: "playerControlBar"
-
-    function showChapterMarks() {
-        if (contentItem.trackPositionSlider)
-            contentItem.trackPositionSlider.showChapterMarks()
+    function showChapterMarks() { positionSlider.showChapterMarks() }
+    function applyMenu(nextMenu) {
+        if (menu === nextMenu) return
+        if (nextMenu) dismiss()
+        menu = nextMenu
     }
-
-    function applyMenu(menu) {
-        if (root.menu === menu)
-            return
-
-        // NOTE: When applying a new menu we hide the previous one.
-        if (menu)
-            dismiss()
-
-        root.menu = menu
-    }
-
     function dismiss() {
-        if ((typeof menu === undefined) || !menu)
-            return
-        if (menu.hasOwnProperty("dismiss"))
-            menu.dismiss()
-        else if (menu.hasOwnProperty("close"))
-            menu.close()
+        if (!menu) return
+        if (menu.dismiss) menu.dismiss()
+        else if (menu.close) menu.close()
+        menu = null
     }
-
-    readonly property ColorContext colorContext: ColorContext {
-        id: theme
-        colorSet: ColorContext.Window
+    onForceUnlock: {
+        dismiss()
+        tracks.forceUnlock()
+        speed.popup.close()
     }
+    background: Rectangle { color: "#141414" }
 
-    TextMetrics {
-        id: timeTextMetrics
-        font.pixelSize: (textPosition === ControlBar.TimeTextPosition.LeftRightSlider) ? VLCStyle.fontSize_small
-                                                                                       : VLCStyle.fontSize_normal
-        text: {
-            // This text metrics is used for both the time and length, as we want them to have the same width.
-            // Length might not be reported in some cases, for that reason we should check both and use the bigger one.
-
-            // Some extra space to compensate non-monospaced fonts ("-" takes more space than ":", double "-" for guarantee)
-            return (Player.time.isSubHour() && Player.length.isSubHour()) ? "00--00" : "00--00--00"
+    component PlayerButton: Widgets.IconToolButton {
+        Layout.preferredWidth: VLCStyle.dp(32, VLCStyle.scale)
+        Layout.preferredHeight: VLCStyle.dp(32, VLCStyle.scale)
+        font.pixelSize: VLCStyle.dp(20, VLCStyle.scale)
+        color: enabled ? "#dddddd" : "#555555"
+        backgroundColor: hovered || visualFocus ? "#303030" : "transparent"
+        radius: VLCStyle.dp(6, VLCStyle.scale)
+        focusPolicy: Qt.StrongFocus
+        Navigation.parentItem: root
+    }
+    contentItem: RowLayout {
+        spacing: VLCStyle.dp(8, VLCStyle.scale)
+        PlayerButton {
+            id: play
+            text: Player.playingState === Player.PLAYING_STATE_PLAYING ? VLCIcons.pause : VLCIcons.play
+            description: Player.playingState === Player.PLAYING_STATE_PLAYING ? qsTr("Pause") : qsTr("Play")
+            AccessibleCompat.id: "playButton"
+            onClicked: MainPlaylistController.togglePlayPause()
+            focus: true
         }
-    }
-
-    background: Rectangle {
-        color: theme.bg.primary
-    }
-
-    contentItem: ColumnLayout {
-        spacing: VLCStyle.margin_xsmall
-
-        readonly property real sliderY: row2.y
-
-        property alias trackPositionSlider: trackPositionSlider
-
-        property alias mediaRemainingTime: mediaRemainingTime
-
-        property alias playerControlLayout: playerControlLayout
-
-        readonly property list<Item> strayItems: [
-            T.Label {
-                id: mediaTime
-
-                Layout.preferredWidth: (textPosition === ControlBar.TimeTextPosition.LeftRightSlider) ? timeTextMetrics.width : -1
-
-                text: {
-                    const length = Player.length
-                    return Player.time.formatHMS(length.isSubSecond() ? VLCTick.SubSecondFormattedAsMS : 0)
-                }
-                color: theme.fg.primary
-                font: timeTextMetrics.font
-                horizontalAlignment: Text.AlignHCenter
-
-                // TODO: Do not use `Binding` when minimum Qt is 6.12:
-                Binding {
-                    target: mediaTime
-                    property: "mutabilityGroup"
-                    when: (mediaTime.mutabilityGroup !== undefined)
-                    value: (Player.playingState === Player.PLAYING_STATE_PLAYING) ? Item.ModerateMutabilityGroup
-                                                                                  : Item.StaticMutabilityGroup
-                }
-
-                anchors.left: (parent === pseudoRow) ? parent.left : undefined
-                anchors.verticalCenter: (parent === pseudoRow) ? parent.verticalCenter : undefined
-            },
-            T.Label {
-                id: mediaRemainingTime
-
-                Layout.preferredWidth: (textPosition === ControlBar.TimeTextPosition.LeftRightSlider) ? timeTextMetrics.width : -1
-
-                readonly property bool showRemainingTime: (MainCtx.showRemainingTime && Player.remainingTime.valid())
-
-                text: showRemainingTime
-                      ? "-" + Player.remainingTime.formatHMS()
-                      : Player.length.formatHMS()
-                color: mediaTime.color
-                font: timeTextMetrics.font
-                horizontalAlignment: Text.AlignHCenter
-
-                visible: root.showRemainingTime
-
-                // TODO: Do not use `Binding` when minimum Qt is 6.12:
-                Binding {
-                    target: mediaRemainingTime
-                    property: "mutabilityGroup"
-                    when: (mediaRemainingTime.mutabilityGroup !== undefined)
-                    value: ((Player.playingState === Player.PLAYING_STATE_PLAYING) &&
-                            mediaRemainingTime.showRemainingTime) ? Item.ModerateMutabilityGroup
-                                                                  : Item.StaticMutabilityGroup
-                }
-
-                anchors.right: (parent === pseudoRow) ? parent.right : undefined
-                anchors.verticalCenter: (parent === pseudoRow) ? parent.verticalCenter : undefined
-
-                TapHandler {
-                    onTapped: (eventPoint, button) => {
-                        MainCtx.showRemainingTime = !MainCtx.showRemainingTime
-                    }
-                }
-
-                HoverHandler {
-                    id: mediaRemainingTimeHover
-                }
-
-                Widgets.ToolTipExt {
-                    colorContext.palette: theme.palette
-
-                    visible: mediaRemainingTimeHover.hovered && MainCtx.showRemainingTime && Player.rate !== 1
-                    delay: VLCStyle.delayToolTipAppear
-                    text: {
-                        if (!visible)
-                            return ""
-
-                        const playbackSpeed = Math.abs(Player.rate)
-                        const adjustedRemainingTime = Player.remainingTime.scale(1 / playbackSpeed)
-                            ? Player.remainingTime.scale(1 / playbackSpeed)
-                            : Player.remainingTime
-
-                        return qsTr("%1 (%2x)")
-                            .arg(adjustedRemainingTime.formatHMS())
-                            .arg(+Player.rate.toFixed(2))
-                    }
-
-                    x: (parent.width - width) / 2
-                }
-            },
-            SliderBar {
-                id: trackPositionSlider
-
-                barHeight: root.sliderHeight
-
-                Accessible.role: Accessible.Slider
-                Accessible.name: qsTr("Progress")
-                AccessibleCompat.id: "progressSlider"
-
-                Layout.fillWidth: true
-                enabled: Player.playingState === Player.PLAYING_STATE_PLAYING || Player.playingState === Player.PLAYING_STATE_PAUSED
-
-                Navigation.parentItem: root
-                Navigation.downItem: playerControlLayout
-
-                activeFocusOnTab: true
-
-                focus: true
-
-                Keys.onPressed: (event) => {
-                    Navigation.defaultKeyAction(event)
-                }
-            },
-            Loader {
-                id: bookmarksLoader
-
-                parent: root
-                active: MainCtx.mediaLibraryAvailable
-                source: "qrc:///qt/qml/VLC/MediaLibrary/Bookmarks.qml"
-
-                x: root.leftPadding + trackPositionSlider.x + row2.Layout.leftMargin
-                y: row2.y + row2.height + VLCStyle.margin_xxsmall
-                width: trackPositionSlider.width
-
-                onLoaded: {
-                   item.barHeight = Qt.binding(function() { return bookmarksHeight })
-                   item.controlBarHovered = Qt.binding(function() { return root.hovered })
-                   item.yShift = Qt.binding(function() { return row2.height + VLCStyle.margin_xxsmall })
-                }
-            }
-        ]
-
-        Item {
-            // BUG: RowLayout can not be used here
-            // because of a Qt bug. (Height is
-            // incorrectly determined. Could be
-            // about nested layouting).
-
-            id: pseudoRow
-            Layout.fillWidth: true
-            Layout.fillHeight: false
-            Layout.leftMargin: VLCStyle.margin_normal
-            Layout.rightMargin: VLCStyle.margin_normal
-
-            implicitHeight: visible ? Math.max(mediaTime.implicitHeight, mediaRemainingTime.implicitHeight) : 0
-
-            visible: children.length > 0
-
-            children: {
-                switch (textPosition) {
-                case ControlBar.TimeTextPosition.AboveSlider:
-                    return [mediaTime, mediaRemainingTime]
-                case ControlBar.TimeTextPosition.Hide:
-                case ControlBar.TimeTextPosition.LeftRightSlider:
-                default:
-                    return []
-                }
-            }
+        PlayerButton {
+            text: VLCIcons.previous
+            description: qsTr("Previous media")
+            visible: !root.compact
+            enabled: MainPlaylistController.hasPrev
+            onClicked: MainPlaylistController.prev()
         }
-
-        RowLayout {
-            id: row2
-
-            children: {
-                switch (textPosition) {
-                case ControlBar.TimeTextPosition.Hide:
-                case ControlBar.TimeTextPosition.AboveSlider:
-                    return [trackPositionSlider]
-                case ControlBar.TimeTextPosition.LeftRightSlider:
-                    return [mediaTime, trackPositionSlider, mediaRemainingTime]
-                default:
-                    return []
-                }
-            }
-
-            visible: children.length > 0
-
-            spacing: VLCStyle.margin_xsmall
-
-            Layout.fillWidth: true
-            Layout.fillHeight: false
-            Layout.leftMargin: (textPosition === ControlBar.TimeTextPosition.LeftRightSlider) ? VLCStyle.margin_xsmall
-                                                                                              : 0
-
-            Layout.rightMargin: Layout.leftMargin
+        PlayerButton {
+            text: VLCIcons.next
+            description: qsTr("Next media")
+            visible: !root.compact
+            enabled: MainPlaylistController.hasNext
+            onClicked: MainPlaylistController.next()
         }
-
-        PlayerControlLayout {
-            id: playerControlLayout
-
+        Text {
+            text: Player.time.formatHMS()
+            color: "#dddddd"
+            font.pixelSize: VLCStyle.dp(12, VLCStyle.scale)
+            Layout.minimumWidth: VLCStyle.dp(44, VLCStyle.scale)
+            horizontalAlignment: Text.AlignRight
+        }
+        SliderBar {
+            id: positionSlider
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.leftMargin: VLCStyle.margin_large
-            Layout.rightMargin: VLCStyle.margin_large
-
-            identifier: root.identifier
-
-            implicitHeight: MainCtx.pinVideoControls ? VLCStyle.controlLayoutHeightPinned
-                                                     : VLCStyle.controlLayoutHeight
-
-            visible: !model?.empty ?? false
-
-            Navigation.upItem: trackPositionSlider.enabled ? trackPositionSlider : root.Navigation.upItem
-
+            Layout.minimumWidth: VLCStyle.dp(64, VLCStyle.scale)
+            Layout.preferredHeight: VLCStyle.dp(28, VLCStyle.scale)
+            barHeight: root.sliderHeight
+            backgroundColor: "#141414"
+            colorContext.palette: VLCStyle.darkPalette
+            activeFocusOnTab: true
+            enabled: Player.isStarted && Player.seekable
+            Accessible.name: qsTr("Playback position")
+            AccessibleCompat.id: "progressSlider"
+            Navigation.parentItem: root
+        }
+        T.Label {
+            text: MainCtx.showRemainingTime && Player.remainingTime.valid()
+                  ? "-" + Player.remainingTime.formatHMS() : Player.length.formatHMS()
+            color: "#dddddd"
+            font.pixelSize: VLCStyle.dp(12, VLCStyle.scale)
+            visible: root.showRemainingTime
+            Layout.minimumWidth: VLCStyle.dp(44, VLCStyle.scale)
+            TapHandler { onTapped: MainCtx.showRemainingTime = !MainCtx.showRemainingTime }
+        }
+        Controls.PlaybackSpeedButton {
+            id: speed
+            Layout.preferredHeight: VLCStyle.dp(32, VLCStyle.scale)
+            Layout.preferredWidth: VLCStyle.dp(46, VLCStyle.scale)
+            color: "#dddddd"
+            colorContext.palette: VLCStyle.darkPalette
+            backgroundColor: "transparent"
+            visible: !root.compact
+            onMenuOpened: (openedMenu) => root.applyMenu(openedMenu)
             onRequestLockUnlockAutoHide: (lock) => root.requestLockUnlockAutoHide(lock)
-
-            onMenuOpened: (menu) => root.applyMenu(menu)
-
-            Component.onCompleted: {
-                root.forceUnlock.connect(playerControlLayout.forceUnlock)
-            }
+        }
+        Controls.VolumeWidget {
+            Layout.preferredWidth: VLCStyle.dp(root.compact ? 84 : 132, VLCStyle.scale)
+            Layout.preferredHeight: VLCStyle.dp(32, VLCStyle.scale)
+            Navigation.parentItem: root
+        }
+        Controls.LangButton {
+            id: tracks
+            Layout.preferredWidth: VLCStyle.dp(32, VLCStyle.scale)
+            Layout.preferredHeight: VLCStyle.dp(32, VLCStyle.scale)
+            color: "#dddddd"
+            colorContext.palette: VLCStyle.darkPalette
+            backgroundColor: "transparent"
+            Navigation.parentItem: root
+            onMenuOpened: (openedMenu) => root.applyMenu(openedMenu)
+            onRequestLockUnlockAutoHide: (lock) => root.requestLockUnlockAutoHide(lock)
+        }
+        PlayerButton {
+            text: VLCIcons.effect_filter
+            description: qsTr("Audio and video settings")
+            visible: !root.compact
+            onClicked: DialogsProvider.extendedDialog()
+        }
+        PlayerButton {
+            text: VLCIcons.playlist
+            description: qsTr("Play queue")
+            onClicked: MainCtx.playqueuePanel.visible = !MainCtx.playqueuePanel.visible
+        }
+        PlayerButton {
+            text: VLCIcons.fullscreen
+            description: qsTr("Fullscreen")
+            onClicked: MainCtx.toggleInterfaceFullScreen()
         }
     }
 }

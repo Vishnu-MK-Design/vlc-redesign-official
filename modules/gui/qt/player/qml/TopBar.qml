@@ -279,7 +279,7 @@ FocusScope{
                 anchors.left: parent.left
 
                 objectName: "IconToolButton"
-                font.pixelSize: VLCStyle.icon_banner
+                font.pixelSize: VLCStyle.dp(20, VLCStyle.scale)
                 text: VLCIcons.back
                 description: qsTr("Back")
 
@@ -355,7 +355,7 @@ FocusScope{
         text: root.title
         color: theme.fg.primary
         font.pixelSize: VLCStyle.dp(13, VLCStyle.scale)
-        font.weight: Font.DemiBold
+        font.weight: Font.Normal
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter
 
@@ -393,8 +393,8 @@ FocusScope{
         text: root.title
         horizontalAlignment: Text.AlignLeft
         color: theme.fg.primary
-        font.weight: Font.DemiBold
-        font.pixelSize: VLCStyle.dp(18, VLCStyle.scale)
+        font.weight: Font.Normal
+        font.pixelSize: VLCStyle.dp(14, VLCStyle.scale)
         elide: Text.ElideRight
     }
 
@@ -441,10 +441,10 @@ FocusScope{
             visible: !root.showToolbar
             enabled: visible
             focus: visible
-            font.pixelSize: VLCStyle.icon_banner
+            font.pixelSize: VLCStyle.dp(20, VLCStyle.scale)
 
-            width: VLCStyle.bannerButton_width
-            height: VLCStyle.bannerButton_height
+            width: VLCStyle.dp(32, VLCStyle.scale)
+            height: VLCStyle.dp(32, VLCStyle.scale)
 
             text: VLCIcons.more
             description: qsTr("Menu")
@@ -484,7 +484,7 @@ FocusScope{
 
             anchors.verticalCenter: parent.verticalCenter
             objectName: ControlListModel.PLAYLIST_BUTTON
-            font.pixelSize: VLCStyle.icon_banner
+            font.pixelSize: VLCStyle.dp(20, VLCStyle.scale)
             text: VLCIcons.playlist
             description: qsTr("Play Queue")
 
@@ -492,8 +492,8 @@ FocusScope{
 
             focus: root.showToolbar
 
-            width: VLCStyle.bannerButton_width
-            height: VLCStyle.bannerButton_height
+            width: VLCStyle.dp(32, VLCStyle.scale)
+            height: VLCStyle.dp(32, VLCStyle.scale)
 
             plListView: root.plListView
             

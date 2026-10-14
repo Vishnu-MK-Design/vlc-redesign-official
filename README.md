@@ -1,5 +1,14 @@
 # VLC media player
 
+> This experiment starts directly from [VideoLAN's official VLC source](https://github.com/videolan/vlc),
+> revision `3127258a2dac31be87f4ead6492d3862a8a90a31`.
+> Original design concept by **Juxtopposed**: [Figma, CC BY 4.0](https://www.figma.com/community/file/1691465999134370980/vlc-redesign)
+> and [video walkthrough](https://www.youtube.com/watch?v=ERFeOgqk324).
+> This project's contribution is implementation. It is unofficial and not affiliated with VideoLAN.
+> First app pass: a compact playback row wired to VLC's native player, track selector, settings, queue and fullscreen.
+> Design fidelity and native runtime verification are still in progress.
+
+
 **VLC** is a libre and open source **media player** and **multimedia engine**,
 focused on **playing everything**, and **running everywhere**.
 
@@ -13,7 +22,7 @@ The **engine of VLC** can be embedded into 3rd party applications, and is called
 **VLC** is part of the [VideoLAN project](https://videolan.org) and
 is developed and supported by a community of volunteers.
 
-The VideoLAN project was started at the university [École Centrale Paris](https://www.centralesupelec.fr/) who
+The VideoLAN project was started at the university [Ã‰cole Centrale Paris](https://www.centralesupelec.fr/) who
 relicensed VLC under the GPLv2 license in February 2001. Since then, VLC has
 been downloaded **billions** of times.
 

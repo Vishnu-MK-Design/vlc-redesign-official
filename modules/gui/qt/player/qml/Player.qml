@@ -51,7 +51,7 @@ FocusScope {
     }
 
     // Only applicable in video mode:
-    property bool displayFadeRectangles: !_controlsUnderVideo && (height > (implicitFadeRectangleHeight * 3))
+    property bool displayFadeRectangles: false
     property real implicitFadeRectangleHeight: VLCStyle.dp(206, VLCStyle.scale)
 
     // Private
@@ -954,7 +954,7 @@ FocusScope {
                   resumeVisible)
 
         focus: true
-        title: Player.title
+        title: Player.title !== "" ? Player.title : Player.name
 
         pinControls: MainCtx.pinVideoControls
 
@@ -1294,11 +1294,9 @@ FocusScope {
 
         rightPadding: VLCStyle.applicationHorizontalMargin
         leftPadding: VLCStyle.applicationHorizontalMargin
-        bottomPadding: VLCStyle.applicationVerticalMargin + VLCStyle.margin_xsmall
+        bottomPadding: VLCStyle.applicationVerticalMargin + VLCStyle.dp(6, VLCStyle.scale)
 
-        textPosition: (MainCtx.pinVideoControls)
-                      ? ControlBar.TimeTextPosition.LeftRightSlider
-                      : ControlBar.TimeTextPosition.AboveSlider
+        textPosition: ControlBar.TimeTextPosition.LeftRightSlider
 
         // hide right text so that it won't overlap with play queue
         showRemainingTime: (textPosition !== ControlBar.TimeTextPosition.AboveSlider)
