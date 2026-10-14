@@ -1,0 +1,69 @@
+name: Windows VLC app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      VLC_IMAGE: registry.videolan.org/vlc-debian-win64-posix:20260611225331
+      # Last official revision changing Windows contribs at our source snapshot.
+      CONTRIB_REVISION: d83cb23375405257164b5c073c6370e180608632
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room for VideoLAN's toolchain
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Choose the official prebuilt dependencies
+        id: contrib
+        run: |
+          url="https://artifacts.videolan.org/vlc/win64/vlc-contrib-x86_64-w64-mingw32-${CONTRIB_REVISION}.tar.zst"
+          if extras/ci/check-url.sh "$url"; then
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Cache build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            extras/tools/build
+            .ccache
+          key: win64-tools-${{ env.CONTRIB_REVISION }}-${{ github.sha }}
+          restore-keys: win64-tools-${{ env.CONTRIB_REVISION }}-
+      - name: Build and package the real Windows app
+        env:
+          PREBUILT_URL: ${{ steps.contrib.outputs.url }}
+        run: |
+          mkdir -p .ccache
+          docker pull "$VLC_IMAGE"
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/build" -w /build \
+            -e HOME=/tmp -e VLC_PREBUILT_CONTRIBS_URL="$PREBUILT_URL" \
+            -e CCACHE_DIR=/build/.ccache "$VLC_IMAGE" bash -ec '
+              git config --global --add safe.directory /build
+              if [ -n "$VLC_PREBUILT_CONTRIBS_URL" ]; then
+                extras/package/win32/build.sh -r -a x86_64 -p
+              else
+                unset VLC_PREBUILT_CONTRIBS_URL
+                extras/package/win32/build.sh -r -a x86_64
+              fi
+              cd win64
+              make package-win32-zip'
+          mkdir -p dist
+          unzip -q win64/vlc-*-win64.zip -d dist
+          app_dir=$(find dist -mindepth 1 -maxdepth 1 -type d | head -1)
+          mkdir -p "$app_dir/portable"
+          cp COPYING "$app_dir/COPYING.txt"
+          cp README.md "$app_dir/REDESIGN-CREDITS.md"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vlc-redesign-official-win64
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
